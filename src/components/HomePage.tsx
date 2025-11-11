@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { Gamepad2, Volume2, VolumeX } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import AvvaAvatar from "./AvvaAvatar";
 import GameCard from "./GameCard";
 import { Button } from "@/components/ui/button";
-import { useToast } from "@/hooks/use-toast";
 
 // Game icons - we'll use Lucide icons that match each game
 import { 
@@ -19,43 +19,45 @@ const games = [
     id: "carrom",
     title: "Carrom",
     icon: Circle,
-    description: "Strike and pocket the coins"
+    description: "Strike and pocket the coins",
+    route: "/carrom"
   },
   {
     id: "chess",
     title: "Chess",
     icon: Crown,
-    description: "Checkmate Avva's king"
+    description: "Checkmate Avva's king",
+    route: "/chess"
   },
   {
     id: "ludo",
     title: "Ludo",
     icon: Dices,
-    description: "Race your tokens home"
+    description: "Race your tokens home",
+    route: "/ludo"
   },
   {
     id: "chinese-checkers",
     title: "Chinese Checkers",
     icon: Star,
-    description: "Jump to the opposite corner"
+    description: "Jump to the opposite corner",
+    route: "/chinese-checkers"
   },
   {
     id: "brainvita",
     title: "Brainvita",
     icon: CircleDot,
-    description: "Solve the peg puzzle"
+    description: "Solve the peg puzzle",
+    route: "/brainvita"
   }
 ];
 
 const HomePage = () => {
   const [musicEnabled, setMusicEnabled] = useState(true);
-  const { toast } = useToast();
+  const navigate = useNavigate();
 
-  const handleGameClick = (gameId: string, gameName: string) => {
-    toast({
-      title: "Coming Soon!",
-      description: `${gameName} is being prepared for you. Check back soon!`,
-    });
+  const handleGameClick = (route: string) => {
+    navigate(route);
   };
 
   return (
@@ -115,7 +117,7 @@ const HomePage = () => {
               title={game.title}
               icon={game.icon}
               description={game.description}
-              onClick={() => handleGameClick(game.id, game.title)}
+              onClick={() => handleGameClick(game.route)}
             />
           ))}
         </div>
