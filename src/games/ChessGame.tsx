@@ -4,6 +4,7 @@ import GameHeader from "@/components/GameHeader";
 import { getRandomMessage } from "@/lib/avvaAI";
 import { useToast } from "@/hooks/use-toast";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import confetti from "canvas-confetti";
 
 const pieceSymbols: Record<string, string> = {
@@ -16,6 +17,7 @@ const ChessGame = () => {
   const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
   const [avvaMessage, setAvvaMessage] = useState(getRandomMessage("greeting"));
   const [avvaThinking, setAvvaThinking] = useState(false);
+  const [gameOver, setGameOver] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -29,12 +31,14 @@ const ChessGame = () => {
             spread: 70,
             origin: { y: 0.6 }
           });
+          setGameOver(true);
           setAvvaMessage(getRandomMessage("losing"));
           toast({
             title: "Checkmate! You won!",
             description: "Congratulations, you beat Avva!",
           });
         } else {
+          setGameOver(true);
           setAvvaMessage(getRandomMessage("winning"));
           toast({
             title: "Checkmate! Avva won!",
@@ -42,6 +46,7 @@ const ChessGame = () => {
           });
         }
       } else if (game.isDraw()) {
+        setGameOver(true);
         toast({
           title: "Draw!",
           description: "The game ended in a draw.",
@@ -79,7 +84,7 @@ const ChessGame = () => {
   };
 
   const onSquareClick = (square: string) => {
-    if (avvaThinking || game.turn() === 'b') return;
+    if (avvaThinking || game.turn() === 'b' || gameOver) return;
 
     if (selectedSquare) {
       try {
@@ -160,6 +165,7 @@ const ChessGame = () => {
   const handleRestart = () => {
     setGame(new Chess());
     setSelectedSquare(null);
+    setGameOver(false);
     setAvvaMessage(getRandomMessage("greeting"));
     setAvvaThinking(false);
   };
@@ -200,11 +206,29 @@ const ChessGame = () => {
             </div>
           </div>
 
-          <Card className="mt-4 p-4 text-center">
-            <p className="text-sm text-muted-foreground">
-              Click a piece, then click where you want to move it
-            </p>
-          </Card>
+          {gameOver && (
+            <Card className="mt-4 p-6 text-center bg-[#D4AF37]/20 border-2 border-[#D4AF37]">
+              <h2 className="text-2xl font-bold mb-2">
+                {game.isCheckmate() 
+                  ? (game.turn() === "w" ? "Avva Won!" : "🎉 You Won!")
+                  : "Draw!"}
+              </h2>
+              <p className="text-muted-foreground mb-4">
+                {game.isCheckmate() 
+                  ? (game.turn() === "w" ? "Checkmate! Better luck next time." : "Checkmate! You defeated Avva!")
+                  : "The game ended in a draw."}
+              </p>
+              <Button onClick={handleRestart}>Play Again</Button>
+            </Card>
+          )}
+
+          {!gameOver && (
+            <Card className="mt-4 p-4 text-center">
+              <p className="text-sm text-muted-foreground">
+                Click a piece, then click where you want to move it
+              </p>
+            </Card>
+          )}
         </div>
       </main>
     </div>

@@ -18,6 +18,8 @@ const CarromGame = () => {
   const [avvaThinking, setAvvaThinking] = useState(false);
   const [queenPocketed, setQueenPocketed] = useState<"player" | "avva" | null>(null);
   const [queenCovered, setQueenCovered] = useState(false);
+  const [strikerX, setStrikerX] = useState(300);
+  const [gameOver, setGameOver] = useState(false);
   const { toast } = useToast();
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -146,11 +148,20 @@ const CarromGame = () => {
         ctx.stroke();
       });
 
-      // Draw striker if player's turn
-      if (strikerRef.current && isPlayerTurn) {
+      // Draw striker if player's turn (both during placement and after shooting)
+      if (strikerRef.current) {
         const { x, y } = strikerRef.current.position;
         ctx.beginPath();
         ctx.arc(x, y, 20, 0, Math.PI * 2);
+        ctx.fillStyle = "#3A7BD5";
+        ctx.fill();
+        ctx.strokeStyle = "#704214";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      } else if (isPlayerTurn && !avvaThinking) {
+        // Draw striker preview at baseline
+        ctx.beginPath();
+        ctx.arc(strikerX, 550, 20, 0, Math.PI * 2);
         ctx.fillStyle = "#3A7BD5";
         ctx.fill();
         ctx.strokeStyle = "#704214";
@@ -217,29 +228,30 @@ const CarromGame = () => {
   }, []);
 
   useEffect(() => {
-    if (playerScore >= 5 && playerScore > avvaScore) {
+    if (playerScore >= 5 && playerScore > avvaScore && !gameOver) {
       confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+      setGameOver(true);
       setAvvaMessage(getRandomMessage("losing"));
       toast({
         title: "You Won!",
         description: "You pocketed 5 coins first!",
       });
-    } else if (avvaScore >= 5 && avvaScore > playerScore) {
+    } else if (avvaScore >= 5 && avvaScore > playerScore && !gameOver) {
+      setGameOver(true);
       setAvvaMessage(getRandomMessage("winning"));
       toast({
         title: "Avva Won!",
         description: "She pocketed 5 coins first!",
       });
     }
-  }, [playerScore, avvaScore]);
+  }, [playerScore, avvaScore, gameOver]);
 
   const handleShoot = () => {
-    if (!isPlayerTurn || !engineRef.current) return;
+    if (!isPlayerTurn || !engineRef.current || gameOver) return;
 
     const engine = engineRef.current;
     const width = 600;
-    const strikerY = width - 100;
-    const strikerX = width / 2;
+    const strikerY = 550;
 
     // Create striker
     const striker = Matter.Bodies.circle(strikerX, strikerY, 20, {
@@ -330,13 +342,15 @@ const CarromGame = () => {
     setQueenPocketed(null);
     setQueenCovered(false);
     setIsPlayerTurn(true);
+    setGameOver(false);
     setAvvaMessage(getRandomMessage("greeting"));
     setAngle(0);
     setPower(50);
+    setStrikerX(300);
     window.location.reload();
   };
 
-  const gameOver = (playerScore >= 5 || avvaScore >= 5) && coinsRef.current.length === 0;
+  
 
   return (
     <div className="min-h-screen bg-background kolam-pattern">
@@ -374,6 +388,20 @@ const CarromGame = () => {
             <Card className="p-6 space-y-4">
               <div>
                 <label className="text-sm font-medium mb-2 block">
+                  Striker Position: {strikerX}px
+                </label>
+                <Slider
+                  value={[strikerX]}
+                  onValueChange={(value) => setStrikerX(value[0])}
+                  min={100}
+                  max={500}
+                  step={5}
+                  className="w-full"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-medium mb-2 block">
                   Angle: {angle}°
                 </label>
                 <Slider
@@ -406,17 +434,31 @@ const CarromGame = () => {
             </Card>
           )}
 
+          {gameOver && (
+            <Card className="p-6 text-center bg-[#D4AF37]/20 border-2 border-[#D4AF37]">
+              <h2 className="text-2xl font-bold mb-2">
+                {playerScore > avvaScore ? "🎉 You Won!" : "Avva Won!"}
+              </h2>
+              <p className="text-muted-foreground mb-4">
+                Final Score: You {playerScore} - {avvaScore} Avva
+              </p>
+              <Button onClick={handleRestart}>Play Again</Button>
+            </Card>
+          )}
+
           {!isPlayerTurn && !gameOver && (
             <Card className="p-4 text-center">
               <p className="text-muted-foreground">Avva is taking her shot...</p>
             </Card>
           )}
 
-          <Card className="p-4 text-center">
-            <p className="text-sm text-muted-foreground">
-              First to pocket 5 coins wins! Pocket the red queen and cover it with another coin for bonus points.
-            </p>
-          </Card>
+          {!gameOver && (
+            <Card className="p-4 text-center">
+              <p className="text-sm text-muted-foreground">
+                First to pocket 5 coins wins! Pocket the red queen and cover it with another coin for bonus points.
+              </p>
+            </Card>
+          )}
         </div>
       </main>
     </div>
