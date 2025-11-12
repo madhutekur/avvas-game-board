@@ -118,6 +118,8 @@ const ChessGame = () => {
   const renderBoard = () => {
     const board = game.board();
     const squares = [];
+    const moves = game.moves({ verbose: true });
+    const legalMoves: string[] = selectedSquare ? moves.filter(m => m.from === selectedSquare).map(m => m.to) : [];
     
     for (let i = 0; i < 8; i++) {
       for (let j = 0; j < 8; j++) {
@@ -125,19 +127,28 @@ const ChessGame = () => {
         const piece = board[i][j];
         const isLight = (i + j) % 2 === 0;
         const isSelected = selectedSquare === square;
+        const isLegalMove = legalMoves.includes(square);
         
         squares.push(
           <div
             key={square}
             onClick={() => onSquareClick(square)}
             className={`
-              aspect-square flex items-center justify-center text-4xl cursor-pointer
-              ${isLight ? "bg-secondary" : "bg-primary/20"}
-              ${isSelected ? "ring-4 ring-accent" : ""}
-              hover:opacity-80 transition-opacity
+              aspect-square flex items-center justify-center text-4xl cursor-pointer relative
+              ${isLight ? "bg-[#F8E9D0]" : "bg-[#704214]"}
+              ${isSelected ? "ring-4 ring-[#D4AF37]" : ""}
+              ${isLegalMove ? "ring-2 ring-[#3A7BD5]" : ""}
+              hover:opacity-80 transition-all
             `}
           >
-            {piece && pieceSymbols[piece.type === piece.type.toUpperCase() ? piece.type.toUpperCase() : piece.type]}
+            {isLegalMove && !piece && (
+              <div className="w-3 h-3 rounded-full bg-[#3A7BD5]/40"></div>
+            )}
+            {piece && (
+              <span className={piece.color === 'w' ? 'text-white drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]' : 'text-black drop-shadow-[0_1px_1px_rgba(255,255,255,0.3)]'}>
+                {pieceSymbols[piece.color === 'w' ? piece.type.toUpperCase() : piece.type]}
+              </span>
+            )}
           </div>
         );
       }

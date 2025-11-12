@@ -28,23 +28,22 @@ const BrainvitaGame = () => {
   const { toast } = useToast();
 
   const isValidMove = (fromRow: number, fromCol: number, toRow: number, toCol: number): boolean => {
-    if (board[toRow][toCol] !== 2) return false;
+    // Target must be empty
+    if (board[toRow]?.[toCol] !== 2) return false;
 
-    const rowDiff = toRow - fromRow;
-    const colDiff = toCol - fromCol;
+    const rowDiff = Math.abs(toRow - fromRow);
+    const colDiff = Math.abs(toCol - fromCol);
 
-    // Check if it's a jump (2 squares away)
-    if (Math.abs(rowDiff) === 2 && colDiff === 0) {
-      const midRow = fromRow + rowDiff / 2;
-      return board[midRow][fromCol] === 1;
+    // Must be exactly 2 squares away horizontally or vertically
+    if (!((rowDiff === 2 && colDiff === 0) || (rowDiff === 0 && colDiff === 2))) {
+      return false;
     }
 
-    if (Math.abs(colDiff) === 2 && rowDiff === 0) {
-      const midCol = fromCol + colDiff / 2;
-      return board[fromRow][midCol] === 1;
-    }
-
-    return false;
+    // Must jump over exactly one peg
+    const midRow = (fromRow + toRow) / 2;
+    const midCol = (fromCol + toCol) / 2;
+    
+    return board[midRow][midCol] === 1;
   };
 
   const makeMove = (fromRow: number, fromCol: number, toRow: number, toCol: number) => {

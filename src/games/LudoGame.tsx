@@ -9,7 +9,7 @@ import confetti from "canvas-confetti";
 
 type TokenPosition = {
   id: number;
-  position: number; // -1 = home, 0-51 = board, 100 = finished
+  position: number; // -1 = home, 0-51 = board path, 52-57 = final lane, 58 = finished
   color: "red" | "blue";
 };
 
@@ -42,7 +42,7 @@ const LudoGame = () => {
   };
 
   const handlePlayerRoll = () => {
-    if (!isPlayerTurn || gameOver) return;
+    if (!isPlayerTurn || gameOver || diceValue !== null) return;
     
     const dice = rollDice();
     toast({
@@ -50,15 +50,16 @@ const LudoGame = () => {
       description: dice === 6 ? "You get another turn!" : "Click a token to move",
     });
 
-    // If no valid moves, pass turn
     const hasValidMove = playerTokens.some(token => {
-      if (token.position === 100) return false;
+      if (token.position === 58) return false;
       if (token.position === -1) return dice === 6;
-      return token.position + dice <= 51;
+      if (token.position >= 52) return token.position + dice <= 58;
+      return true;
     });
 
     if (!hasValidMove) {
       setTimeout(() => {
+        setDiceValue(null);
         setIsPlayerTurn(false);
         makeAvvaMove();
       }, 1500);
@@ -69,15 +70,22 @@ const LudoGame = () => {
     if (!diceValue || !isPlayerTurn || gameOver) return;
 
     const token = playerTokens[tokenId];
-    if (token.position === 100) return;
+    if (token.position === 58) return;
 
     let newPosition = token.position;
     
     if (token.position === -1 && diceValue === 6) {
-      newPosition = 0;
-    } else if (token.position >= 0) {
-      newPosition = Math.min(token.position + diceValue, 100);
-      if (token.position + diceValue > 51) newPosition = 100;
+      newPosition = 0; // Red starts at 0
+    } else if (token.position >= 0 && token.position < 51) {
+      newPosition = token.position + diceValue;
+      if (newPosition > 51) {
+        newPosition = 51 - (newPosition - 51); // Bounce back
+      }
+    } else if (token.position === 51) {
+      // Enter final lane
+      newPosition = 52;
+    } else if (token.position >= 52 && token.position < 58) {
+      newPosition = Math.min(token.position + diceValue, 58);
     } else {
       return;
     }
@@ -86,14 +94,10 @@ const LudoGame = () => {
     newTokens[tokenId] = { ...token, position: newPosition };
     setPlayerTokens(newTokens);
 
-    if (newPosition === 100) {
-      const allFinished = newTokens.every(t => t.position === 100);
+    if (newPosition === 58) {
+      const allFinished = newTokens.every(t => t.position === 58);
       if (allFinished) {
-        confetti({
-          particleCount: 100,
-          spread: 70,
-          origin: { y: 0.6 }
-        });
+        confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
         setGameOver(true);
         setAvvaMessage(getRandomMessage("losing"));
         toast({
@@ -120,24 +124,30 @@ const LudoGame = () => {
     setTimeout(() => {
       const dice = rollDice();
       
-      // Simple AI: move token furthest ahead that can move
       const validTokens = avvaTokens.filter(token => {
-        if (token.position === 100) return false;
+        if (token.position === 58) return false;
         if (token.position === -1) return dice === 6;
-        return token.position + dice <= 51;
+        if (token.position >= 52) return token.position + dice <= 58;
+        return true;
       });
 
       if (validTokens.length > 0) {
-        const tokenToMove = validTokens.reduce((best, current) => 
-          current.position > best.position ? current : best
-        );
+        // Prioritize: finishing > advancing > exiting home
+        const tokenToMove = validTokens.reduce((best, current) => {
+          if (current.position + dice === 58) return current;
+          if (best.position + dice === 58) return best;
+          return current.position > best.position ? current : best;
+        });
 
         let newPosition = tokenToMove.position;
         if (tokenToMove.position === -1 && dice === 6) {
-          newPosition = 0;
-        } else {
-          newPosition = Math.min(tokenToMove.position + dice, 100);
-          if (tokenToMove.position + dice > 51) newPosition = 100;
+          newPosition = 13; // Blue starts at position 13
+        } else if (tokenToMove.position >= 0 && tokenToMove.position < 51) {
+          newPosition = (tokenToMove.position + dice) % 52;
+        } else if (tokenToMove.position === 51) {
+          newPosition = 52;
+        } else if (tokenToMove.position >= 52) {
+          newPosition = Math.min(tokenToMove.position + dice, 58);
         }
 
         const newTokens = [...avvaTokens];
@@ -145,8 +155,8 @@ const LudoGame = () => {
         newTokens[idx] = { ...tokenToMove, position: newPosition };
         setAvvaTokens(newTokens);
 
-        if (newPosition === 100) {
-          const allFinished = newTokens.every(t => t.position === 100);
+        if (newPosition === 58) {
+          const allFinished = newTokens.every(t => t.position === 58);
           if (allFinished) {
             setGameOver(true);
             setAvvaMessage(getRandomMessage("winning"));
@@ -161,7 +171,7 @@ const LudoGame = () => {
       }
 
       setAvvaThinking(false);
-      if (dice === 6) {
+      if (dice === 6 && !gameOver) {
         setTimeout(makeAvvaMove, 1000);
       } else {
         setIsPlayerTurn(true);
@@ -187,6 +197,55 @@ const LudoGame = () => {
     setIsPlayerTurn(true);
     setGameOver(false);
     setAvvaMessage(getRandomMessage("greeting"));
+  };
+
+  const getTokenStyle = (token: TokenPosition) => {
+    const pos = token.position;
+    
+    if (pos === -1) return { display: 'none' };
+    if (pos === 58) return { display: 'none' };
+    
+    // Calculate position on board (simplified visualization)
+    const boardSize = 600;
+    const cellSize = boardSize / 15;
+    
+    // Map positions to coordinates (simplified cross pattern)
+    let x = 0, y = 0;
+    
+    if (pos >= 0 && pos < 13) {
+      // Bottom row going left
+      x = boardSize - (pos + 1) * cellSize;
+      y = boardSize - cellSize * 2;
+    } else if (pos >= 13 && pos < 26) {
+      // Left column going up
+      x = cellSize;
+      y = boardSize - (pos - 12) * cellSize;
+    } else if (pos >= 26 && pos < 39) {
+      // Top row going right
+      x = (pos - 25) * cellSize;
+      y = cellSize * 2;
+    } else if (pos >= 39 && pos < 52) {
+      // Right column going down
+      x = boardSize - cellSize * 2;
+      y = (pos - 38) * cellSize;
+    } else if (pos >= 52 && pos < 58) {
+      // Final lane (center)
+      const lanePos = pos - 52;
+      if (token.color === 'red') {
+        x = boardSize / 2 - cellSize;
+        y = boardSize - (lanePos + 3) * cellSize;
+      } else {
+        x = boardSize / 2 + cellSize;
+        y = (lanePos + 3) * cellSize;
+      }
+    }
+    
+    return {
+      position: 'absolute' as const,
+      left: `${(x / boardSize) * 100}%`,
+      top: `${(y / boardSize) * 100}%`,
+      transform: 'translate(-50%, -50%)',
+    };
   };
 
   return (
@@ -224,63 +283,96 @@ const LudoGame = () => {
             </div>
           </Card>
 
+          {/* Ludo Board Visualization */}
+          <Card className="p-4">
+            <div className="relative aspect-square max-w-[600px] mx-auto bg-[#F8E9D0] border-4 border-[#704214] rounded-lg">
+              {/* Cross-shaped board outline */}
+              <div className="absolute inset-0 grid grid-cols-15 grid-rows-15">
+                {/* Red quadrant (bottom-left) */}
+                <div className="absolute bottom-0 left-0 w-[40%] h-[40%] bg-[#C93C20]/20 border-2 border-[#C93C20] rounded-tl-lg"></div>
+                {/* Blue quadrant (top-right) */}
+                <div className="absolute top-0 right-0 w-[40%] h-[40%] bg-[#3A7BD5]/20 border-2 border-[#3A7BD5] rounded-br-lg"></div>
+                {/* Center star */}
+                <div className="absolute top-1/2 left-1/2 w-[20%] h-[20%] -translate-x-1/2 -translate-y-1/2 bg-[#D4AF37] rounded-full flex items-center justify-center">
+                  <span className="text-2xl">★</span>
+                </div>
+              </div>
+
+              {/* Player tokens */}
+              {playerTokens.map((token) => (
+                <div
+                  key={`player-${token.id}`}
+                  style={getTokenStyle(token)}
+                  onClick={() => movePlayerToken(token.id)}
+                  className={`w-6 h-6 rounded-full bg-[#C93C20] border-2 border-white cursor-pointer hover:scale-110 transition-transform ${
+                    !isPlayerTurn || !diceValue || gameOver ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
+                />
+              ))}
+
+              {/* Avva tokens */}
+              {avvaTokens.map((token) => (
+                <div
+                  key={`avva-${token.id}`}
+                  style={getTokenStyle(token)}
+                  className="w-6 h-6 rounded-full bg-[#3A7BD5] border-2 border-white"
+                />
+              ))}
+            </div>
+          </Card>
+
           <div className="grid md:grid-cols-2 gap-6">
             <Card className="p-6">
-              <h3 className="text-xl font-serif font-bold text-primary mb-4">
+              <h3 className="text-xl font-serif font-bold text-[#C93C20] mb-4">
                 Your Tokens (Red)
               </h3>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
                 {playerTokens.map((token) => (
-                  <Button
+                  <div
                     key={token.id}
-                    variant="outline"
-                    className={`h-24 ${
-                      token.position === 100 
-                        ? "bg-success text-success-foreground" 
-                        : "hover:border-primary"
-                    }`}
-                    onClick={() => movePlayerToken(token.id)}
-                    disabled={!isPlayerTurn || !diceValue || gameOver}
+                    className="flex items-center justify-between p-3 rounded-lg bg-muted"
                   >
-                    <div className="text-center">
-                      <div className="w-8 h-8 rounded-full bg-primary mx-auto mb-2"></div>
-                      <div className="text-xs">
-                        {token.position === -1
-                          ? "Home"
-                          : token.position === 100
-                          ? "Finished!"
-                          : `Step ${token.position}`}
-                      </div>
+                    <div className="flex items-center gap-3">
+                      <div className="w-4 h-4 rounded-full bg-[#C93C20]"></div>
+                      <span className="text-sm">Token {token.id + 1}</span>
                     </div>
-                  </Button>
+                    <span className="text-xs text-muted-foreground">
+                      {token.position === -1
+                        ? "Home"
+                        : token.position === 58
+                        ? "Finished!"
+                        : token.position >= 52
+                        ? `Final Lane ${token.position - 51}`
+                        : `Step ${token.position}`}
+                    </span>
+                  </div>
                 ))}
               </div>
             </Card>
 
             <Card className="p-6">
-              <h3 className="text-xl font-serif font-bold text-accent mb-4">
+              <h3 className="text-xl font-serif font-bold text-[#3A7BD5] mb-4">
                 Avva's Tokens (Blue)
               </h3>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
                 {avvaTokens.map((token) => (
                   <div
                     key={token.id}
-                    className={`h-24 border-2 rounded-lg flex items-center justify-center ${
-                      token.position === 100
-                        ? "bg-success/20 border-success"
-                        : "border-border"
-                    }`}
+                    className="flex items-center justify-between p-3 rounded-lg bg-muted"
                   >
-                    <div className="text-center">
-                      <div className="w-8 h-8 rounded-full bg-accent mx-auto mb-2"></div>
-                      <div className="text-xs text-muted-foreground">
-                        {token.position === -1
-                          ? "Home"
-                          : token.position === 100
-                          ? "Finished!"
-                          : `Step ${token.position}`}
-                      </div>
+                    <div className="flex items-center gap-3">
+                      <div className="w-4 h-4 rounded-full bg-[#3A7BD5]"></div>
+                      <span className="text-sm">Token {token.id + 1}</span>
                     </div>
+                    <span className="text-xs text-muted-foreground">
+                      {token.position === -1
+                        ? "Home"
+                        : token.position === 58
+                        ? "Finished!"
+                        : token.position >= 52
+                        ? `Final Lane ${token.position - 51}`
+                        : `Step ${token.position}`}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -289,7 +381,7 @@ const LudoGame = () => {
 
           <Card className="p-4 text-center">
             <p className="text-sm text-muted-foreground">
-              Roll 6 to start. Move all tokens to position 51+ to win!
+              Roll 6 to start. Move all tokens around the board and into the final lane to win!
             </p>
           </Card>
         </div>

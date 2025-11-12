@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import Matter from "matter-js";
 import GameHeader from "@/components/GameHeader";
 import { getRandomMessage } from "@/lib/avvaAI";
 import { useToast } from "@/hooks/use-toast";
@@ -15,52 +16,261 @@ const CarromGame = () => {
   const [isPlayerTurn, setIsPlayerTurn] = useState(true);
   const [avvaMessage, setAvvaMessage] = useState(getRandomMessage("greeting"));
   const [avvaThinking, setAvvaThinking] = useState(false);
-  const [coinsLeft, setCoinsLeft] = useState(9);
+  const [queenPocketed, setQueenPocketed] = useState<"player" | "avva" | null>(null);
+  const [queenCovered, setQueenCovered] = useState(false);
   const { toast } = useToast();
 
-  const handleShoot = () => {
-    if (!isPlayerTurn) return;
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const engineRef = useRef<Matter.Engine | null>(null);
+  const coinsRef = useRef<Matter.Body[]>([]);
+  const strikerRef = useRef<Matter.Body | null>(null);
+  const animationRef = useRef<number>();
 
-    // Simulate hitting based on angle and power
-    const hitChance = (power / 100) * (1 - Math.abs(angle) / 180);
-    const hit = Math.random() < hitChance;
+  useEffect(() => {
+    if (!canvasRef.current) return;
 
-    if (hit) {
-      const newScore = playerScore + 1;
-      setPlayerScore(newScore);
-      setCoinsLeft(coinsLeft - 1);
-      setAvvaMessage(getRandomMessage("mistake"));
-      toast({
-        title: "Nice shot!",
-        description: "You pocketed a coin!",
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const width = 600;
+    const height = 600;
+    canvas.width = width;
+    canvas.height = height;
+
+    // Create engine
+    const engine = Matter.Engine.create();
+    engine.gravity.y = 0;
+    engineRef.current = engine;
+
+    // Create walls
+    const wallThickness = 20;
+    const walls = [
+      Matter.Bodies.rectangle(width / 2, wallThickness / 2, width, wallThickness, { isStatic: true }),
+      Matter.Bodies.rectangle(width / 2, height - wallThickness / 2, width, wallThickness, { isStatic: true }),
+      Matter.Bodies.rectangle(wallThickness / 2, height / 2, wallThickness, height, { isStatic: true }),
+      Matter.Bodies.rectangle(width - wallThickness / 2, height / 2, wallThickness, height, { isStatic: true }),
+    ];
+
+    // Create pockets at corners
+    const pocketRadius = 25;
+    const pocketOffset = 30;
+    const pockets = [
+      { x: pocketOffset, y: pocketOffset },
+      { x: width - pocketOffset, y: pocketOffset },
+      { x: pocketOffset, y: height - pocketOffset },
+      { x: width - pocketOffset, y: height - pocketOffset },
+    ];
+
+    // Create coins (9 white, 9 black, 1 red queen)
+    const coins: Matter.Body[] = [];
+    const coinRadius = 15;
+    const center = { x: width / 2, y: height / 2 };
+
+    // Red queen in center
+    coins.push(
+      Matter.Bodies.circle(center.x, center.y, coinRadius, {
+        restitution: 0.7,
+        friction: 0.05,
+        frictionAir: 0.02,
+        label: "queen",
+      })
+    );
+
+    // Arrange other coins in a circle
+    const positions = [
+      { x: 0, y: -30 }, { x: 26, y: -15 }, { x: 26, y: 15 }, { x: 0, y: 30 },
+      { x: -26, y: 15 }, { x: -26, y: -15 }, { x: 0, y: -60 }, { x: 52, y: -30 },
+      { x: 52, y: 30 }, { x: 0, y: 60 }, { x: -52, y: 30 }, { x: -52, y: -30 },
+      { x: 30, y: 0 }, { x: -30, y: 0 }, { x: 45, y: 0 }, { x: -45, y: 0 },
+      { x: 15, y: -45 }, { x: -15, y: 45 },
+    ];
+
+    positions.forEach((pos, i) => {
+      coins.push(
+        Matter.Bodies.circle(center.x + pos.x, center.y + pos.y, coinRadius, {
+          restitution: 0.7,
+          friction: 0.05,
+          frictionAir: 0.02,
+          label: i < 9 ? "white" : "black",
+        })
+      );
+    });
+
+    coinsRef.current = coins;
+
+    // Add all bodies to world
+    Matter.World.add(engine.world, [...walls, ...coins]);
+
+    // Render function
+    const render = () => {
+      ctx.fillStyle = "#F8E9D0";
+      ctx.fillRect(0, 0, width, height);
+
+      // Draw border
+      ctx.strokeStyle = "#704214";
+      ctx.lineWidth = wallThickness;
+      ctx.strokeRect(wallThickness / 2, wallThickness / 2, width - wallThickness, height - wallThickness);
+
+      // Draw center circle
+      ctx.strokeStyle = "#704214";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(center.x, center.y, 80, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Draw pockets
+      pockets.forEach(pocket => {
+        ctx.fillStyle = "#000000";
+        ctx.beginPath();
+        ctx.arc(pocket.x, pocket.y, pocketRadius, 0, Math.PI * 2);
+        ctx.fill();
       });
 
-      if (newScore >= 5) {
-        confetti({
-          particleCount: 100,
-          spread: 70,
-          origin: { y: 0.6 }
-        });
-        toast({
-          title: "You Won!",
-          description: "You scored 5 coins first!",
-        });
-        setAvvaMessage(getRandomMessage("losing"));
-      } else {
-        // Player gets another turn on successful pocket
-        return;
+      // Draw coins
+      coinsRef.current.forEach(coin => {
+        const { x, y } = coin.position;
+        ctx.beginPath();
+        ctx.arc(x, y, coinRadius, 0, Math.PI * 2);
+        
+        if (coin.label === "queen") {
+          ctx.fillStyle = "#C93C20";
+        } else if (coin.label === "white") {
+          ctx.fillStyle = "#FFFFFF";
+        } else {
+          ctx.fillStyle = "#000000";
+        }
+        ctx.fill();
+        ctx.strokeStyle = "#704214";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      });
+
+      // Draw striker if player's turn
+      if (strikerRef.current && isPlayerTurn) {
+        const { x, y } = strikerRef.current.position;
+        ctx.beginPath();
+        ctx.arc(x, y, 20, 0, Math.PI * 2);
+        ctx.fillStyle = "#3A7BD5";
+        ctx.fill();
+        ctx.strokeStyle = "#704214";
+        ctx.lineWidth = 2;
+        ctx.stroke();
       }
-    } else {
+
+      animationRef.current = requestAnimationFrame(render);
+    };
+
+    render();
+
+    // Run engine
+    const runner = Matter.Runner.create();
+    Matter.Runner.run(runner, engine);
+
+    // Check for pocketed coins
+    const checkPockets = () => {
+      coinsRef.current = coinsRef.current.filter(coin => {
+        const { x, y } = coin.position;
+        const pocketed = pockets.some(p => 
+          Math.hypot(p.x - x, p.y - y) < pocketRadius
+        );
+
+        if (pocketed) {
+          Matter.World.remove(engine.world, coin);
+          
+          if (coin.label === "queen" && !queenCovered) {
+            setQueenPocketed(isPlayerTurn ? "player" : "avva");
+            toast({
+              title: "Queen pocketed!",
+              description: "Pocket another coin to cover it.",
+            });
+          } else if (coin.label === "white") {
+            if (isPlayerTurn) {
+              setPlayerScore(prev => prev + 1);
+              if (queenPocketed === "player" && !queenCovered) {
+                setQueenCovered(true);
+                setPlayerScore(prev => prev + 3);
+              }
+            }
+          } else if (coin.label === "black") {
+            if (!isPlayerTurn) {
+              setAvvaScore(prev => prev + 1);
+              if (queenPocketed === "avva" && !queenCovered) {
+                setQueenCovered(true);
+                setAvvaScore(prev => prev + 3);
+              }
+            }
+          }
+          return false;
+        }
+        return true;
+      });
+    };
+
+    const interval = setInterval(checkPockets, 100);
+
+    return () => {
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+      Matter.Engine.clear(engine);
+      clearInterval(interval);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (playerScore >= 5 && playerScore > avvaScore) {
+      confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+      setAvvaMessage(getRandomMessage("losing"));
       toast({
-        title: "Missed!",
-        description: "Avva's turn now.",
+        title: "You Won!",
+        description: "You pocketed 5 coins first!",
+      });
+    } else if (avvaScore >= 5 && avvaScore > playerScore) {
+      setAvvaMessage(getRandomMessage("winning"));
+      toast({
+        title: "Avva Won!",
+        description: "She pocketed 5 coins first!",
       });
     }
+  }, [playerScore, avvaScore]);
+
+  const handleShoot = () => {
+    if (!isPlayerTurn || !engineRef.current) return;
+
+    const engine = engineRef.current;
+    const width = 600;
+    const strikerY = width - 100;
+    const strikerX = width / 2;
+
+    // Create striker
+    const striker = Matter.Bodies.circle(strikerX, strikerY, 20, {
+      restitution: 0.8,
+      friction: 0.05,
+      frictionAir: 0.02,
+    });
+
+    strikerRef.current = striker;
+    Matter.World.add(engine.world, striker);
+
+    // Apply force based on angle and power
+    const forceMultiplier = power / 2000;
+    const angleRad = (angle * Math.PI) / 180;
+    const forceX = Math.sin(angleRad) * forceMultiplier;
+    const forceY = -Math.cos(angleRad) * forceMultiplier;
+
+    Matter.Body.applyForce(striker, striker.position, { x: forceX, y: forceY });
 
     setIsPlayerTurn(false);
-    if (coinsLeft > 1 && playerScore < 5 && avvaScore < 5) {
-      setTimeout(makeAvvaShot, 1500);
-    }
+
+    setTimeout(() => {
+      if (strikerRef.current) {
+        Matter.World.remove(engine.world, strikerRef.current);
+        strikerRef.current = null;
+      }
+      
+      if (coinsRef.current.length > 0) {
+        setTimeout(makeAvvaShot, 1500);
+      }
+    }, 3000);
   };
 
   const makeAvvaShot = () => {
@@ -68,47 +278,65 @@ const CarromGame = () => {
     setAvvaMessage(getRandomMessage("thinking"));
 
     setTimeout(() => {
-      // Avva has 40% chance to hit (playful AI)
-      const hit = Math.random() < 0.4;
-
-      if (hit) {
-        const newScore = avvaScore + 1;
-        setAvvaScore(newScore);
-        setCoinsLeft(coinsLeft - 1);
-        setAvvaMessage(getRandomMessage("goodMove"));
-        
-        if (newScore >= 5) {
-          toast({
-            title: "Avva Won!",
-            description: "She scored 5 coins first!",
-          });
-          setAvvaMessage(getRandomMessage("winning"));
-          setAvvaThinking(false);
-          return;
-        }
-
-        // Avva shoots again
-        setTimeout(makeAvvaShot, 1500);
-      } else {
-        setAvvaMessage("Your turn now, kanna!");
+      if (!engineRef.current || coinsRef.current.length === 0) {
+        setAvvaThinking(false);
         setIsPlayerTurn(true);
+        return;
       }
-      
-      setAvvaThinking(false);
+
+      const engine = engineRef.current;
+      const width = 600;
+      const strikerY = 100;
+      const strikerX = width / 2 + (Math.random() - 0.5) * 100;
+
+      const striker = Matter.Bodies.circle(strikerX, strikerY, 20, {
+        restitution: 0.8,
+        friction: 0.05,
+        frictionAir: 0.02,
+      });
+
+      Matter.World.add(engine.world, striker);
+
+      // Aim at a black coin
+      const blackCoins = coinsRef.current.filter(c => c.label === "black");
+      const targetCoin = blackCoins.length > 0 
+        ? blackCoins[Math.floor(Math.random() * blackCoins.length)]
+        : coinsRef.current[Math.floor(Math.random() * coinsRef.current.length)];
+
+      if (targetCoin) {
+        const dx = targetCoin.position.x - strikerX;
+        const dy = targetCoin.position.y - strikerY;
+        const distance = Math.hypot(dx, dy);
+        const forceMultiplier = 0.015;
+        
+        Matter.Body.applyForce(striker, striker.position, {
+          x: (dx / distance) * forceMultiplier,
+          y: (dy / distance) * forceMultiplier,
+        });
+      }
+
+      setTimeout(() => {
+        Matter.World.remove(engine.world, striker);
+        setAvvaThinking(false);
+        setAvvaMessage(getRandomMessage("goodMove"));
+        setIsPlayerTurn(true);
+      }, 3000);
     }, 2000);
   };
 
   const handleRestart = () => {
     setPlayerScore(0);
     setAvvaScore(0);
-    setCoinsLeft(9);
+    setQueenPocketed(null);
+    setQueenCovered(false);
     setIsPlayerTurn(true);
     setAvvaMessage(getRandomMessage("greeting"));
     setAngle(0);
     setPower(50);
+    window.location.reload();
   };
 
-  const gameOver = playerScore >= 5 || avvaScore >= 5;
+  const gameOver = (playerScore >= 5 || avvaScore >= 5) && coinsRef.current.length === 0;
 
   return (
     <div className="min-h-screen bg-background kolam-pattern">
@@ -123,52 +351,23 @@ const CarromGame = () => {
         <div className="max-w-3xl mx-auto space-y-6">
           <div className="grid md:grid-cols-3 gap-4">
             <Card className="p-4 text-center">
-              <div className="text-sm text-muted-foreground mb-2">Your Score</div>
+              <div className="text-sm text-muted-foreground mb-2">Your Score (White)</div>
               <div className="text-4xl font-bold text-primary">{playerScore}</div>
             </Card>
 
             <Card className="p-4 text-center">
               <div className="text-sm text-muted-foreground mb-2">Coins Left</div>
-              <div className="text-4xl font-bold text-accent">{coinsLeft}</div>
+              <div className="text-4xl font-bold text-accent">{coinsRef.current.length}</div>
             </Card>
 
             <Card className="p-4 text-center">
-              <div className="text-sm text-muted-foreground mb-2">Avva's Score</div>
+              <div className="text-sm text-muted-foreground mb-2">Avva's Score (Black)</div>
               <div className="text-4xl font-bold text-accent">{avvaScore}</div>
             </Card>
           </div>
 
-          <Card className="p-8">
-            <div className="aspect-square bg-muted rounded-lg border-4 border-primary relative overflow-hidden">
-              {/* Simplified Carrom board visualization */}
-              <div className="absolute inset-4 border-2 border-foreground/20 rounded-lg"></div>
-              
-              {/* Center circle */}
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-20 h-20 rounded-full border-2 border-foreground/20"></div>
-              
-              {/* Coins */}
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 grid grid-cols-3 gap-2">
-                {Array.from({ length: coinsLeft }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="w-6 h-6 rounded-full bg-accent border-2 border-accent-foreground"
-                  ></div>
-                ))}
-              </div>
-
-              {/* Striker angle indicator */}
-              {isPlayerTurn && !gameOver && (
-                <div
-                  className="absolute bottom-8 left-1/2 -translate-x-1/2 w-1 h-20 bg-primary origin-bottom transition-transform"
-                  style={{ transform: `translateX(-50%) rotate(${angle}deg)` }}
-                ></div>
-              )}
-              
-              {/* Striker */}
-              {isPlayerTurn && !gameOver && (
-                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-8 h-8 rounded-full bg-primary border-2 border-primary-foreground"></div>
-              )}
-            </div>
+          <Card className="p-4">
+            <canvas ref={canvasRef} className="mx-auto border-4 border-[#704214] rounded-lg" />
           </Card>
 
           {isPlayerTurn && !gameOver && (
@@ -194,18 +393,14 @@ const CarromGame = () => {
                 <Slider
                   value={[power]}
                   onValueChange={(value) => setPower(value[0])}
-                  min={10}
+                  min={30}
                   max={100}
                   step={5}
                   className="w-full"
                 />
               </div>
 
-              <Button
-                size="lg"
-                onClick={handleShoot}
-                className="w-full"
-              >
+              <Button size="lg" onClick={handleShoot} className="w-full">
                 Shoot!
               </Button>
             </Card>
@@ -219,7 +414,7 @@ const CarromGame = () => {
 
           <Card className="p-4 text-center">
             <p className="text-sm text-muted-foreground">
-              First to pocket 5 coins wins! Adjust angle and power, then shoot.
+              First to pocket 5 coins wins! Pocket the red queen and cover it with another coin for bonus points.
             </p>
           </Card>
         </div>
