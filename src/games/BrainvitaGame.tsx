@@ -1,11 +1,21 @@
 import { useState } from "react";
 import GameHeader from "@/components/GameHeader";
+import { GameOverModal } from "@/components/GameOverModal";
 import { getRandomMessage } from "@/lib/avvaAI";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Undo2, Lightbulb } from "lucide-react";
 import confetti from "canvas-confetti";
+
+const RULES = [
+  "The board starts with pegs in all holes except the center.",
+  "Select a peg, then jump over an adjacent peg into an empty hole.",
+  "The jumped peg is removed from the board.",
+  "You can only jump horizontally or vertically (not diagonally).",
+  "Goal: Remove all pegs except one, ideally leaving it in the center!",
+  "Use Undo to go back a move or Hint to get help from Avva.",
+];
 
 type Cell = 0 | 1 | 2; // 0 = invalid, 1 = peg, 2 = empty
 
@@ -25,6 +35,8 @@ const BrainvitaGame = () => {
   const [history, setHistory] = useState<Cell[][][]>([]);
   const [avvaMessage, setAvvaMessage] = useState(getRandomMessage("greeting"));
   const [moves, setMoves] = useState(0);
+  const [gameOver, setGameOver] = useState(false);
+  const [winner, setWinner] = useState<"player" | "avva" | null>(null);
   const { toast } = useToast();
 
   const isValidMove = (fromRow: number, fromCol: number, toRow: number, toCol: number): boolean => {
@@ -63,26 +75,68 @@ const BrainvitaGame = () => {
     setMoves(moves + 1);
     setSelectedPeg(null);
 
-    // Check for win
     const pegsLeft = newBoard.flat().filter(cell => cell === 1).length;
-    if (pegsLeft === 1 && newBoard[3][3] === 1) {
+    
+    // Check if there are any valid moves left
+    const hasValidMoves = checkForValidMoves(newBoard);
+    
+    if (pegsLeft === 1) {
       confetti({
         particleCount: 100,
         spread: 70,
         origin: { y: 0.6 }
       });
+      setGameOver(true);
+      setWinner("player");
       setAvvaMessage(getRandomMessage("losing"));
+      
+      if (newBoard[3][3] === 1) {
+        toast({
+          title: "Perfect! You Won!",
+          description: `Completed in ${moves + 1} moves with the peg in the center!`,
+        });
+      } else {
+        toast({
+          title: "You Won!",
+          description: `Only one peg left in ${moves + 1} moves!`,
+        });
+      }
+    } else if (!hasValidMoves) {
+      setGameOver(true);
+      setWinner(null);
       toast({
-        title: "Perfect! You Won!",
-        description: `Completed in ${moves + 1} moves!`,
+        title: "Game Over",
+        description: `No more valid moves. ${pegsLeft} pegs remaining.`,
       });
     } else if (pegsLeft < 10) {
       setAvvaMessage(getRandomMessage("goodMove"));
     }
   };
 
+  const checkForValidMoves = (currentBoard: Cell[][]): boolean => {
+    for (let row = 0; row < 7; row++) {
+      for (let col = 0; col < 7; col++) {
+        if (currentBoard[row][col] === 1) {
+          const directions = [
+            [2, 0], [-2, 0], [0, 2], [0, -2]
+          ];
+          for (const [dRow, dCol] of directions) {
+            const newRow = row + dRow;
+            const newCol = col + dCol;
+            if (newRow >= 0 && newRow < 7 && newCol >= 0 && newCol < 7) {
+              if (isValidMove(row, col, newRow, newCol)) {
+                return true;
+              }
+            }
+          }
+        }
+      }
+    }
+    return false;
+  };
+
   const handleCellClick = (row: number, col: number) => {
-    if (board[row][col] === 0) return;
+    if (board[row][col] === 0 || gameOver) return;
 
     if (selectedPeg) {
       const [fromRow, fromCol] = selectedPeg;
@@ -149,6 +203,8 @@ const BrainvitaGame = () => {
     setSelectedPeg(null);
     setHistory([]);
     setMoves(0);
+    setGameOver(false);
+    setWinner(null);
     setAvvaMessage(getRandomMessage("greeting"));
   };
 
@@ -160,6 +216,7 @@ const BrainvitaGame = () => {
         gameName="Brainvita"
         onRestart={handleRestart}
         avvaMessage={avvaMessage}
+        rules={RULES}
       />
 
       <main className="container mx-auto px-4 py-8">
@@ -233,13 +290,26 @@ const BrainvitaGame = () => {
             </div>
           </Card>
 
-          <Card className="p-4 text-center">
-            <p className="text-sm text-muted-foreground">
-              Jump over pegs to remove them. Goal: Leave only one peg in the center!
-            </p>
-          </Card>
+          {!gameOver && (
+            <Card className="p-4 text-center">
+              <p className="text-sm text-muted-foreground">
+                Jump over pegs to remove them. Goal: Leave only one peg in the center!
+              </p>
+            </Card>
+          )}
         </div>
       </main>
+
+      <GameOverModal
+        open={gameOver}
+        winner={winner || "draw"}
+        message={winner === "player" 
+          ? pegsLeft === 1 && board[3][3] === 1
+            ? `Perfect game! Only one peg left in the center in ${moves} moves!`
+            : `Great job! Only ${pegsLeft} peg${pegsLeft > 1 ? 's' : ''} left in ${moves} moves!`
+          : `No more valid moves. ${pegsLeft} pegs remaining.`}
+        onRestart={handleRestart}
+      />
     </div>
   );
 };

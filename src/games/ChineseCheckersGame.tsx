@@ -1,5 +1,6 @@
 import { useState } from "react";
 import GameHeader from "@/components/GameHeader";
+import { GameOverModal } from "@/components/GameOverModal";
 import { getRandomMessage } from "@/lib/avvaAI";
 import { useToast } from "@/hooks/use-toast";
 import { Card } from "@/components/ui/card";
@@ -12,25 +13,23 @@ type Peg = {
   player: "player" | "avva" | null;
 };
 
-// Star-shaped board layout (proper 6-pointed star with 121 positions)
 const createStarBoard = (): Peg[][] => {
   const board: Peg[][] = [];
   
-  // Row configurations for a proper star pattern (13x17 grid)
   const rowConfigs = [
-    { start: 6, end: 6, player: "avva" as const }, // 0 - top point
-    { start: 5, end: 7, player: "avva" as const }, // 1
-    { start: 4, end: 8, player: "avva" as const }, // 2
-    { start: 3, end: 9, player: "avva" as const }, // 3
-    { start: 0, end: 12, player: null }, // 4 - wide section
-    { start: 1, end: 11, player: null }, // 5
-    { start: 2, end: 10, player: null }, // 6 - center
-    { start: 1, end: 11, player: null }, // 7
-    { start: 0, end: 12, player: null }, // 8 - wide section
-    { start: 3, end: 9, player: "player" as const }, // 9
-    { start: 4, end: 8, player: "player" as const }, // 10
-    { start: 5, end: 7, player: "player" as const }, // 11
-    { start: 6, end: 6, player: "player" as const }, // 12 - bottom point
+    { start: 6, end: 6, player: "avva" as const },
+    { start: 5, end: 7, player: "avva" as const },
+    { start: 4, end: 8, player: "avva" as const },
+    { start: 3, end: 9, player: "avva" as const },
+    { start: 0, end: 12, player: null },
+    { start: 1, end: 11, player: null },
+    { start: 2, end: 10, player: null },
+    { start: 1, end: 11, player: null },
+    { start: 0, end: 12, player: null },
+    { start: 3, end: 9, player: "player" as const },
+    { start: 4, end: 8, player: "player" as const },
+    { start: 5, end: 7, player: "player" as const },
+    { start: 6, end: 6, player: "player" as const },
   ];
 
   for (let row = 0; row < 13; row++) {
@@ -46,109 +45,116 @@ const createStarBoard = (): Peg[][] => {
   return board;
 };
 
+const RULES = [
+  "Move your blue pegs from the bottom triangle to the top red triangle.",
+  "You can move to an adjacent empty spot in any of 6 directions.",
+  "Or hop over adjacent pegs into empty holes (multiple hops allowed per turn!).",
+  "Select a peg, then select where to move it.",
+  "First player to get all 10 pegs in the opposite triangle wins!",
+];
+
 const ChineseCheckersGame = () => {
   const [board, setBoard] = useState<Peg[][]>(createStarBoard());
   const [selectedPeg, setSelectedPeg] = useState<[number, number] | null>(null);
   const [isPlayerTurn, setIsPlayerTurn] = useState(true);
+  const [isTurnLocked, setIsTurnLocked] = useState(false);
   const [avvaMessage, setAvvaMessage] = useState(getRandomMessage("greeting"));
   const [avvaThinking, setAvvaThinking] = useState(false);
   const [gameOver, setGameOver] = useState(false);
+  const [winner, setWinner] = useState<"player" | "avva" | null>(null);
   const { toast } = useToast();
 
-  const isValidMove = (fromRow: number, fromCol: number, toRow: number, toCol: number): boolean => {
-    const toPeg = board[toRow]?.[toCol];
+  const isValidMove = (fromRow: number, fromCol: number, toRow: number, toCol: number, currentBoard: Peg[][]): boolean => {
+    const toPeg = currentBoard[toRow]?.[toCol];
     if (!toPeg || toPeg.player !== null) return false;
 
     const rowDiff = Math.abs(toRow - fromRow);
     const colDiff = Math.abs(toCol - fromCol);
 
-    // Adjacent move (1 step in any of 6 directions)
     if ((rowDiff === 0 && colDiff === 1) || 
         (rowDiff === 1 && colDiff === 0) ||
         (rowDiff === 1 && colDiff === 1)) {
       return true;
     }
 
-    // Jump move (must hop over exactly one peg)
     if ((rowDiff === 0 && colDiff === 2) ||
         (rowDiff === 2 && colDiff === 0) ||
         (rowDiff === 2 && colDiff === 2)) {
       const midRow = (fromRow + toRow) / 2;
       const midCol = (fromCol + toCol) / 2;
-      const midPeg = board[midRow]?.[midCol];
+      const midPeg = currentBoard[midRow]?.[midCol];
       return midPeg?.player !== null;
     }
 
     return false;
   };
 
-  const makeMove = (fromRow: number, fromCol: number, toRow: number, toCol: number, player: "player" | "avva") => {
+  const commitMove = (fromRow: number, fromCol: number, toRow: number, toCol: number, player: "player" | "avva") => {
+    setIsTurnLocked(true);
+    
     const newBoard = board.map(row => row.map(cell => cell ? { ...cell } : cell));
     const movingPlayer = newBoard[fromRow][fromCol].player;
-    newBoard[toRow][toCol].player = movingPlayer;
-    newBoard[fromRow][fromCol].player = null;
+    
+    newBoard[toRow][toCol] = { ...newBoard[toRow][toCol], player: movingPlayer };
+    newBoard[fromRow][fromCol] = { ...newBoard[fromRow][fromCol], player: null };
+    
     setBoard(newBoard);
     setSelectedPeg(null);
 
-    // Check for win - player needs all pegs in top triangle (rows 0-3)
-    if (player === "player") {
-      const playerPegsInGoal = newBoard.slice(0, 4).reduce((count, row) => 
-        count + row.filter(cell => cell && cell.player === "player").length, 0
-      );
-      
-      if (playerPegsInGoal === 10) {
-        confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
-        setGameOver(true);
-        setAvvaMessage(getRandomMessage("losing"));
-        toast({
-          title: "You Won!",
-          description: "All your pegs reached the opposite corner!",
-        });
-        return;
+    setTimeout(() => {
+      if (player === "player") {
+        const playerPegsInGoal = newBoard.slice(0, 4).reduce((count, row) => 
+          count + row.filter(cell => cell && cell.player === "player").length, 0
+        );
+        
+        if (playerPegsInGoal === 10) {
+          confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+          setGameOver(true);
+          setWinner("player");
+          setAvvaMessage(getRandomMessage("losing"));
+          setIsTurnLocked(false);
+          return;
+        }
+        
+        setIsPlayerTurn(false);
+        setTimeout(() => makeAvvaMove(newBoard), 1000);
       }
-      
-      setIsPlayerTurn(false);
-      setTimeout(makeAvvaMove, 1500);
-    }
 
-    // Check for Avva win - Avva needs all pegs in bottom triangle (rows 9-12)
-    if (player === "avva") {
-      const avvaPegsInGoal = newBoard.slice(9, 13).reduce((count, row) => 
-        count + row.filter(cell => cell && cell.player === "avva").length, 0
-      );
-      
-      if (avvaPegsInGoal === 10) {
-        setGameOver(true);
-        setAvvaMessage(getRandomMessage("winning"));
-        toast({
-          title: "Avva Won!",
-          description: "All her pegs reached the opposite corner!",
-        });
-        return;
+      if (player === "avva") {
+        const avvaPegsInGoal = newBoard.slice(9, 13).reduce((count, row) => 
+          count + row.filter(cell => cell && cell.player === "avva").length, 0
+        );
+        
+        if (avvaPegsInGoal === 10) {
+          setGameOver(true);
+          setWinner("avva");
+          setAvvaMessage(getRandomMessage("winning"));
+          setIsTurnLocked(false);
+          return;
+        }
+        
+        setAvvaThinking(false);
+        setIsPlayerTurn(true);
+        setIsTurnLocked(false);
+        setAvvaMessage(getRandomMessage("goodMove"));
       }
-      
-      setAvvaThinking(false);
-      setIsPlayerTurn(true);
-      setAvvaMessage(getRandomMessage("goodMove"));
-    }
+    }, 100);
   };
 
-  const makeAvvaMove = () => {
+  const makeAvvaMove = (currentBoard: Peg[][]) => {
     setAvvaThinking(true);
     setAvvaMessage(getRandomMessage("thinking"));
 
     setTimeout(() => {
-      // Find Avva's pegs
       const avvaPegs: [number, number][] = [];
-      board.forEach((row, r) => {
+      currentBoard.forEach((row, r) => {
         row.forEach((cell, c) => {
-          if (cell.player === "avva") {
+          if (cell && cell.player === "avva") {
             avvaPegs.push([r, c]);
           }
         });
       });
 
-      // Try to move a peg toward bottom (player's starting area)
       const directions: [number, number][] = [
         [1, 0], [2, 0], [1, 1], [2, 2],
         [0, 1], [0, 2], [1, -1], [0, -1],
@@ -157,7 +163,6 @@ const ChineseCheckersGame = () => {
       ];
 
       for (const [row, col] of avvaPegs) {
-        // Prioritize moves that go downward (towards higher row numbers)
         const sortedDirs = [...directions].sort((a, b) => b[0] - a[0]);
         
         for (const [dRow, dCol] of sortedDirs) {
@@ -165,8 +170,8 @@ const ChineseCheckersGame = () => {
           const newCol = col + dCol;
           
           if (newRow >= 0 && newRow < 13 && newCol >= 0 && newCol < 13) {
-            if (isValidMove(row, col, newRow, newCol)) {
-              makeMove(row, col, newRow, newCol, "avva");
+            if (isValidMove(row, col, newRow, newCol, currentBoard)) {
+              commitMove(row, col, newRow, newCol, "avva");
               return;
             }
           }
@@ -175,20 +180,22 @@ const ChineseCheckersGame = () => {
 
       setAvvaThinking(false);
       setIsPlayerTurn(true);
+      setIsTurnLocked(false);
       setAvvaMessage("Your turn, kanna!");
     }, 2000);
   };
 
   const handleCellClick = (row: number, col: number) => {
-    if (!isPlayerTurn || gameOver) return;
+    if (!isPlayerTurn || gameOver || isTurnLocked) return;
 
     const cell = board[row][col];
     if (!cell) return;
 
     if (selectedPeg) {
       const [fromRow, fromCol] = selectedPeg;
-      if (isValidMove(fromRow, fromCol, row, col)) {
-        makeMove(fromRow, fromCol, row, col, "player");
+      
+      if (isValidMove(fromRow, fromCol, row, col, board)) {
+        commitMove(fromRow, fromCol, row, col, "player");
       } else {
         if (cell.player === "player") {
           setSelectedPeg([row, col]);
@@ -207,7 +214,9 @@ const ChineseCheckersGame = () => {
     setBoard(createStarBoard());
     setSelectedPeg(null);
     setIsPlayerTurn(true);
+    setIsTurnLocked(false);
     setGameOver(false);
+    setWinner(null);
     setAvvaMessage(getRandomMessage("greeting"));
   };
 
@@ -218,6 +227,7 @@ const ChineseCheckersGame = () => {
         onRestart={handleRestart}
         avvaMessage={avvaMessage}
         avvaThinking={avvaThinking}
+        rules={RULES}
       />
 
       <main className="container mx-auto px-4 py-8">
@@ -252,9 +262,9 @@ const ChineseCheckersGame = () => {
                           ${isEmpty ? "bg-[#704214]/20 border border-[#704214]/40" : ""}
                           ${cell.player === "player" ? "bg-[#3A7BD5] border-2 border-[#3A7BD5]" : ""}
                           ${cell.player === "avva" ? "bg-[#C93C20] border-2 border-[#C93C20]" : ""}
-                          ${isSelected ? "animate-pulse-glow ring-4 ring-[#D4AF37]" : ""}
+                          ${isSelected ? "animate-pulse ring-4 ring-[#D4AF37]" : ""}
                           ${isEmpty ? "hover:bg-[#704214]/30" : "hover:scale-110"}
-                          ${gameOver ? "opacity-50 cursor-not-allowed" : ""}
+                          ${gameOver || !isPlayerTurn || isTurnLocked ? "opacity-50 cursor-not-allowed" : ""}
                         `}
                       >
                         {cell.player && (
@@ -270,20 +280,6 @@ const ChineseCheckersGame = () => {
             </div>
           </Card>
 
-          {gameOver && (
-            <Card className="p-6 text-center bg-[#D4AF37]/20 border-2 border-[#D4AF37]">
-              <h2 className="text-2xl font-bold mb-2">
-                {board.slice(0, 4).reduce((count, row) => 
-                  count + row.filter(cell => cell && cell.player === "player").length, 0
-                ) === 10 ? "🎉 You Won!" : "Avva Won!"}
-              </h2>
-              <p className="text-muted-foreground">
-                All pegs reached the opposite corner!
-              </p>
-              <Button onClick={handleRestart} className="mt-4">Play Again</Button>
-            </Card>
-          )}
-
           {!gameOver && (
             <Card className="p-4 text-center">
               <p className="text-sm text-muted-foreground">
@@ -293,6 +289,15 @@ const ChineseCheckersGame = () => {
           )}
         </div>
       </main>
+
+      <GameOverModal
+        open={gameOver}
+        winner={winner || "draw"}
+        message={winner === "player" 
+          ? "All your pegs reached the opposite corner!" 
+          : "All of Avva's pegs reached the opposite corner!"}
+        onRestart={handleRestart}
+      />
     </div>
   );
 };

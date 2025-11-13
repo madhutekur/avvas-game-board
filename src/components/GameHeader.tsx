@@ -2,6 +2,7 @@ import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import AvvaAvatar from "./AvvaAvatar";
+import { RulesModal } from "./RulesModal";
 
 interface GameHeaderProps {
   gameName: string;
@@ -9,6 +10,7 @@ interface GameHeaderProps {
   onHowToPlay?: () => void;
   avvaMessage?: string;
   avvaThinking?: boolean;
+  rules?: string[];
 }
 
 const GameHeader = ({ 
@@ -16,7 +18,8 @@ const GameHeader = ({
   onRestart, 
   onHowToPlay, 
   avvaMessage,
-  avvaThinking = false 
+  avvaThinking = false,
+  rules = []
 }: GameHeaderProps) => {
   const navigate = useNavigate();
 
@@ -39,6 +42,7 @@ const GameHeader = ({
           </h1>
           
           <div className="flex gap-2">
+            {rules.length > 0 && <RulesModal gameName={gameName} rules={rules} />}
             {onHowToPlay && (
               <Button variant="outline" size="sm" onClick={onHowToPlay}>
                 How to Play

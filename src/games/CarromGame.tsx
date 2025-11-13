@@ -1,12 +1,21 @@
 import { useState, useEffect, useRef } from "react";
 import Matter from "matter-js";
 import GameHeader from "@/components/GameHeader";
+import { GameOverModal } from "@/components/GameOverModal";
 import { getRandomMessage } from "@/lib/avvaAI";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import confetti from "canvas-confetti";
+
+const RULES = [
+  "White coins are yours, black coins are Avva's, and the red is the queen.",
+  "Use sliders to position the striker, set aim angle, and power.",
+  "The striker shows its position and aim line before you shoot.",
+  "Pocket the queen and cover it with another coin to score bonus points.",
+  "First player to pocket 5 coins wins the game!",
+];
 
 const CarromGame = () => {
   const [playerScore, setPlayerScore] = useState(0);
@@ -20,6 +29,8 @@ const CarromGame = () => {
   const [queenCovered, setQueenCovered] = useState(false);
   const [strikerX, setStrikerX] = useState(300);
   const [gameOver, setGameOver] = useState(false);
+  const [winner, setWinner] = useState<"player" | "avva" | null>(null);
+  const [isMoving, setIsMoving] = useState(false);
   const { toast } = useToast();
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -40,12 +51,10 @@ const CarromGame = () => {
     canvas.width = width;
     canvas.height = height;
 
-    // Create engine
     const engine = Matter.Engine.create();
     engine.gravity.y = 0;
     engineRef.current = engine;
 
-    // Create walls
     const wallThickness = 20;
     const walls = [
       Matter.Bodies.rectangle(width / 2, wallThickness / 2, width, wallThickness, { isStatic: true }),
@@ -54,7 +63,6 @@ const CarromGame = () => {
       Matter.Bodies.rectangle(width - wallThickness / 2, height / 2, wallThickness, height, { isStatic: true }),
     ];
 
-    // Create pockets at corners
     const pocketRadius = 25;
     const pocketOffset = 30;
     const pockets = [
@@ -64,12 +72,10 @@ const CarromGame = () => {
       { x: width - pocketOffset, y: height - pocketOffset },
     ];
 
-    // Create coins (9 white, 9 black, 1 red queen)
     const coins: Matter.Body[] = [];
     const coinRadius = 15;
     const center = { x: width / 2, y: height / 2 };
 
-    // Red queen in center
     coins.push(
       Matter.Bodies.circle(center.x, center.y, coinRadius, {
         restitution: 0.7,
@@ -79,7 +85,6 @@ const CarromGame = () => {
       })
     );
 
-    // Arrange other coins in a circle
     const positions = [
       { x: 0, y: -30 }, { x: 26, y: -15 }, { x: 26, y: 15 }, { x: 0, y: 30 },
       { x: -26, y: 15 }, { x: -26, y: -15 }, { x: 0, y: -60 }, { x: 52, y: -30 },
@@ -100,28 +105,22 @@ const CarromGame = () => {
     });
 
     coinsRef.current = coins;
-
-    // Add all bodies to world
     Matter.World.add(engine.world, [...walls, ...coins]);
 
-    // Render function
     const render = () => {
       ctx.fillStyle = "#F8E9D0";
       ctx.fillRect(0, 0, width, height);
 
-      // Draw border
       ctx.strokeStyle = "#704214";
       ctx.lineWidth = wallThickness;
       ctx.strokeRect(wallThickness / 2, wallThickness / 2, width - wallThickness, height - wallThickness);
 
-      // Draw center circle
       ctx.strokeStyle = "#704214";
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(center.x, center.y, 80, 0, Math.PI * 2);
       ctx.stroke();
 
-      // Draw pockets
       pockets.forEach(pocket => {
         ctx.fillStyle = "#000000";
         ctx.beginPath();
@@ -129,7 +128,6 @@ const CarromGame = () => {
         ctx.fill();
       });
 
-      // Draw coins
       coinsRef.current.forEach(coin => {
         const { x, y } = coin.position;
         ctx.beginPath();
@@ -148,7 +146,6 @@ const CarromGame = () => {
         ctx.stroke();
       });
 
-      // Draw striker if player's turn (both during placement and after shooting)
       if (strikerRef.current) {
         const { x, y } = strikerRef.current.position;
         ctx.beginPath();
@@ -158,15 +155,31 @@ const CarromGame = () => {
         ctx.strokeStyle = "#704214";
         ctx.lineWidth = 2;
         ctx.stroke();
-      } else if (isPlayerTurn && !avvaThinking) {
+      } else if (isPlayerTurn && !avvaThinking && !isMoving) {
         // Draw striker preview at baseline
+        const strikerY = 550;
         ctx.beginPath();
-        ctx.arc(strikerX, 550, 20, 0, Math.PI * 2);
+        ctx.arc(strikerX, strikerY, 20, 0, Math.PI * 2);
         ctx.fillStyle = "#3A7BD5";
         ctx.fill();
         ctx.strokeStyle = "#704214";
         ctx.lineWidth = 2;
         ctx.stroke();
+
+        // Draw aim line
+        const angleRad = (angle * Math.PI) / 180;
+        const lineLength = (power / 100) * 200;
+        const endX = strikerX + Math.sin(angleRad) * lineLength;
+        const endY = strikerY - Math.cos(angleRad) * lineLength;
+        
+        ctx.strokeStyle = "#D4AF37";
+        ctx.lineWidth = 3;
+        ctx.setLineDash([5, 5]);
+        ctx.beginPath();
+        ctx.moveTo(strikerX, strikerY);
+        ctx.lineTo(endX, endY);
+        ctx.stroke();
+        ctx.setLineDash([]);
       }
 
       animationRef.current = requestAnimationFrame(render);
@@ -174,11 +187,9 @@ const CarromGame = () => {
 
     render();
 
-    // Run engine
     const runner = Matter.Runner.create();
     Matter.Runner.run(runner, engine);
 
-    // Check for pocketed coins
     const checkPockets = () => {
       coinsRef.current = coinsRef.current.filter(coin => {
         const { x, y } = coin.position;
@@ -197,25 +208,48 @@ const CarromGame = () => {
             });
           } else if (coin.label === "white") {
             if (isPlayerTurn) {
-              setPlayerScore(prev => prev + 1);
-              if (queenPocketed === "player" && !queenCovered) {
-                setQueenCovered(true);
-                setPlayerScore(prev => prev + 3);
-              }
+              setPlayerScore(prev => {
+                const newScore = prev + 1;
+                if (queenPocketed === "player" && !queenCovered) {
+                  setQueenCovered(true);
+                  return newScore + 3;
+                }
+                return newScore;
+              });
             }
           } else if (coin.label === "black") {
             if (!isPlayerTurn) {
-              setAvvaScore(prev => prev + 1);
-              if (queenPocketed === "avva" && !queenCovered) {
-                setQueenCovered(true);
-                setAvvaScore(prev => prev + 3);
-              }
+              setAvvaScore(prev => {
+                const newScore = prev + 1;
+                if (queenPocketed === "avva" && !queenCovered) {
+                  setQueenCovered(true);
+                  return newScore + 3;
+                }
+                return newScore;
+              });
             }
           }
           return false;
         }
         return true;
       });
+      
+      // Check if pieces are still moving
+      const anyMoving = coinsRef.current.some(coin => {
+        const vel = coin.velocity;
+        return Math.abs(vel.x) > 0.1 || Math.abs(vel.y) > 0.1;
+      });
+      
+      if (strikerRef.current) {
+        const vel = strikerRef.current.velocity;
+        if (Math.abs(vel.x) > 0.1 || Math.abs(vel.y) > 0.1) {
+          setIsMoving(true);
+        }
+      }
+      
+      if (!anyMoving && strikerRef.current === null && isMoving) {
+        setIsMoving(false);
+      }
     };
 
     const interval = setInterval(checkPockets, 100);
@@ -225,19 +259,21 @@ const CarromGame = () => {
       Matter.Engine.clear(engine);
       clearInterval(interval);
     };
-  }, []);
+  }, [angle, strikerX, power, isPlayerTurn, avvaThinking, isMoving]);
 
   useEffect(() => {
-    if (playerScore >= 5 && playerScore > avvaScore && !gameOver) {
+    if (playerScore >= 5 && !gameOver) {
       confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
       setGameOver(true);
+      setWinner("player");
       setAvvaMessage(getRandomMessage("losing"));
       toast({
         title: "You Won!",
         description: "You pocketed 5 coins first!",
       });
-    } else if (avvaScore >= 5 && avvaScore > playerScore && !gameOver) {
+    } else if (avvaScore >= 5 && !gameOver) {
       setGameOver(true);
+      setWinner("avva");
       setAvvaMessage(getRandomMessage("winning"));
       toast({
         title: "Avva Won!",
@@ -247,13 +283,11 @@ const CarromGame = () => {
   }, [playerScore, avvaScore, gameOver]);
 
   const handleShoot = () => {
-    if (!isPlayerTurn || !engineRef.current || gameOver) return;
+    if (!isPlayerTurn || !engineRef.current || gameOver || isMoving) return;
 
     const engine = engineRef.current;
-    const width = 600;
     const strikerY = 550;
 
-    // Create striker
     const striker = Matter.Bodies.circle(strikerX, strikerY, 20, {
       restitution: 0.8,
       friction: 0.05,
@@ -262,8 +296,8 @@ const CarromGame = () => {
 
     strikerRef.current = striker;
     Matter.World.add(engine.world, striker);
+    setIsMoving(true);
 
-    // Apply force based on angle and power
     const forceMultiplier = power / 2000;
     const angleRad = (angle * Math.PI) / 180;
     const forceX = Math.sin(angleRad) * forceMultiplier;
@@ -278,11 +312,21 @@ const CarromGame = () => {
         Matter.World.remove(engine.world, strikerRef.current);
         strikerRef.current = null;
       }
+      setIsMoving(false);
       
-      if (coinsRef.current.length > 0) {
+      if (coinsRef.current.length > 0 && !gameOver) {
         setTimeout(makeAvvaShot, 1500);
+      } else if (coinsRef.current.length === 0) {
+        // No coins left, end game
+        if (playerScore > avvaScore) {
+          setGameOver(true);
+          setWinner("player");
+        } else if (avvaScore > playerScore) {
+          setGameOver(true);
+          setWinner("avva");
+        }
       }
-    }, 3000);
+    }, 4000);
   };
 
   const makeAvvaShot = () => {
@@ -307,9 +351,10 @@ const CarromGame = () => {
         frictionAir: 0.02,
       });
 
+      strikerRef.current = striker;
       Matter.World.add(engine.world, striker);
+      setIsMoving(true);
 
-      // Aim at a black coin
       const blackCoins = coinsRef.current.filter(c => c.label === "black");
       const targetCoin = blackCoins.length > 0 
         ? blackCoins[Math.floor(Math.random() * blackCoins.length)]
@@ -328,11 +373,15 @@ const CarromGame = () => {
       }
 
       setTimeout(() => {
-        Matter.World.remove(engine.world, striker);
+        if (strikerRef.current) {
+          Matter.World.remove(engine.world, strikerRef.current);
+          strikerRef.current = null;
+        }
+        setIsMoving(false);
         setAvvaThinking(false);
         setAvvaMessage(getRandomMessage("goodMove"));
         setIsPlayerTurn(true);
-      }, 3000);
+      }, 4000);
     }, 2000);
   };
 
@@ -343,14 +392,14 @@ const CarromGame = () => {
     setQueenCovered(false);
     setIsPlayerTurn(true);
     setGameOver(false);
+    setWinner(null);
     setAvvaMessage(getRandomMessage("greeting"));
     setAngle(0);
     setPower(50);
     setStrikerX(300);
+    setIsMoving(false);
     window.location.reload();
   };
-
-  
 
   return (
     <div className="min-h-screen bg-background kolam-pattern">
@@ -359,6 +408,7 @@ const CarromGame = () => {
         onRestart={handleRestart}
         avvaMessage={avvaMessage}
         avvaThinking={avvaThinking}
+        rules={RULES}
       />
 
       <main className="container mx-auto px-4 py-8">
@@ -384,7 +434,7 @@ const CarromGame = () => {
             <canvas ref={canvasRef} className="mx-auto border-4 border-[#704214] rounded-lg" />
           </Card>
 
-          {isPlayerTurn && !gameOver && (
+          {isPlayerTurn && !gameOver && !isMoving && (
             <Card className="p-6 space-y-4">
               <div>
                 <label className="text-sm font-medium mb-2 block">
@@ -434,19 +484,13 @@ const CarromGame = () => {
             </Card>
           )}
 
-          {gameOver && (
-            <Card className="p-6 text-center bg-[#D4AF37]/20 border-2 border-[#D4AF37]">
-              <h2 className="text-2xl font-bold mb-2">
-                {playerScore > avvaScore ? "🎉 You Won!" : "Avva Won!"}
-              </h2>
-              <p className="text-muted-foreground mb-4">
-                Final Score: You {playerScore} - {avvaScore} Avva
-              </p>
-              <Button onClick={handleRestart}>Play Again</Button>
+          {isMoving && (
+            <Card className="p-4 text-center">
+              <p className="text-muted-foreground">Pieces are moving...</p>
             </Card>
           )}
 
-          {!isPlayerTurn && !gameOver && (
+          {!isPlayerTurn && !gameOver && !isMoving && (
             <Card className="p-4 text-center">
               <p className="text-muted-foreground">Avva is taking her shot...</p>
             </Card>
@@ -461,6 +505,15 @@ const CarromGame = () => {
           )}
         </div>
       </main>
+
+      <GameOverModal
+        open={gameOver}
+        winner={winner || "draw"}
+        message={winner === "player" 
+          ? `You won with ${playerScore} points!` 
+          : `Avva won with ${avvaScore} points!`}
+        onRestart={handleRestart}
+      />
     </div>
   );
 };

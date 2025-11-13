@@ -1,11 +1,21 @@
 import { useState, useEffect } from "react";
 import { Chess } from "chess.js";
 import GameHeader from "@/components/GameHeader";
+import { GameOverModal } from "@/components/GameOverModal";
 import { getRandomMessage } from "@/lib/avvaAI";
 import { useToast } from "@/hooks/use-toast";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import confetti from "canvas-confetti";
+
+const RULES = [
+  "You play as White, Avva plays as Black.",
+  "Each piece moves according to standard chess rules.",
+  "Pawns promote to queens when reaching the opposite end.",
+  "Special moves like castling, en passant, and pawn promotion are supported.",
+  "Checkmate wins the game. Stalemate or insufficient material results in a draw.",
+  "Click a piece to select it, then click a legal square to move.",
+];
 
 const pieceSymbols: Record<string, string> = {
   'p': '♟', 'n': '♞', 'b': '♝', 'r': '♜', 'q': '♛', 'k': '♚',
@@ -18,42 +28,37 @@ const ChessGame = () => {
   const [avvaMessage, setAvvaMessage] = useState(getRandomMessage("greeting"));
   const [avvaThinking, setAvvaThinking] = useState(false);
   const [gameOver, setGameOver] = useState(false);
+  const [winner, setWinner] = useState<"player" | "avva" | "draw" | null>(null);
+  const [gameOverMessage, setGameOverMessage] = useState("");
   const { toast } = useToast();
 
   useEffect(() => {
-    // Check for game over
     if (game.isGameOver()) {
       if (game.isCheckmate()) {
-        const winner = game.turn() === "w" ? "Avva" : "You";
-        if (winner === "You") {
+        const isPlayerWinner = game.turn() === "b";
+        if (isPlayerWinner) {
           confetti({
             particleCount: 100,
             spread: 70,
             origin: { y: 0.6 }
           });
           setGameOver(true);
+          setWinner("player");
+          setGameOverMessage("Checkmate! You defeated Avva!");
           setAvvaMessage(getRandomMessage("losing"));
-          toast({
-            title: "Checkmate! You won!",
-            description: "Congratulations, you beat Avva!",
-          });
         } else {
           setGameOver(true);
+          setWinner("avva");
+          setGameOverMessage("Checkmate! Better luck next time.");
           setAvvaMessage(getRandomMessage("winning"));
-          toast({
-            title: "Checkmate! Avva won!",
-            description: "Don't worry, try again!",
-          });
         }
       } else if (game.isDraw()) {
         setGameOver(true);
-        toast({
-          title: "Draw!",
-          description: "The game ended in a draw.",
-        });
+        setWinner("draw");
+        setGameOverMessage("The game ended in a draw.");
       }
     }
-  }, [game, toast]);
+  }, [game]);
 
   const makeAvvaMove = () => {
     setAvvaThinking(true);
@@ -166,15 +171,10 @@ const ChessGame = () => {
     setGame(new Chess());
     setSelectedSquare(null);
     setGameOver(false);
+    setWinner(null);
+    setGameOverMessage("");
     setAvvaMessage(getRandomMessage("greeting"));
     setAvvaThinking(false);
-  };
-
-  const handleHowToPlay = () => {
-    toast({
-      title: "How to Play Chess",
-      description: "Move your pieces to checkmate Avva's king. Drag and drop pieces to make your moves.",
-    });
   };
 
   return (
@@ -182,9 +182,9 @@ const ChessGame = () => {
       <GameHeader
         gameName="Chess"
         onRestart={handleRestart}
-        onHowToPlay={handleHowToPlay}
         avvaMessage={avvaMessage}
         avvaThinking={avvaThinking}
+        rules={RULES}
       />
 
       <main className="container mx-auto px-4 py-8">
@@ -206,22 +206,6 @@ const ChessGame = () => {
             </div>
           </div>
 
-          {gameOver && (
-            <Card className="mt-4 p-6 text-center bg-[#D4AF37]/20 border-2 border-[#D4AF37]">
-              <h2 className="text-2xl font-bold mb-2">
-                {game.isCheckmate() 
-                  ? (game.turn() === "w" ? "Avva Won!" : "🎉 You Won!")
-                  : "Draw!"}
-              </h2>
-              <p className="text-muted-foreground mb-4">
-                {game.isCheckmate() 
-                  ? (game.turn() === "w" ? "Checkmate! Better luck next time." : "Checkmate! You defeated Avva!")
-                  : "The game ended in a draw."}
-              </p>
-              <Button onClick={handleRestart}>Play Again</Button>
-            </Card>
-          )}
-
           {!gameOver && (
             <Card className="mt-4 p-4 text-center">
               <p className="text-sm text-muted-foreground">
@@ -231,6 +215,13 @@ const ChessGame = () => {
           )}
         </div>
       </main>
+
+      <GameOverModal
+        open={gameOver}
+        winner={winner || "draw"}
+        message={gameOverMessage}
+        onRestart={handleRestart}
+      />
     </div>
   );
 };
