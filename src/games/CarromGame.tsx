@@ -38,9 +38,11 @@ const CarromGame = () => {
   const coinsRef = useRef<Matter.Body[]>([]);
   const strikerRef = useRef<Matter.Body | null>(null);
   const animationRef = useRef<number>();
+  const runnerRef = useRef<Matter.Runner | null>(null);
+  const isRenderingRef = useRef(false);
 
   useEffect(() => {
-    if (!canvasRef.current) return;
+    if (!canvasRef.current || engineRef.current) return;
 
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
@@ -182,12 +184,35 @@ const CarromGame = () => {
         ctx.setLineDash([]);
       }
 
-      animationRef.current = requestAnimationFrame(render);
+      // Only continue rendering if pieces are moving or game is active
+      const anyMoving = coinsRef.current.some(coin => {
+        const vel = coin.velocity;
+        return Math.abs(vel.x) > 0.1 || Math.abs(vel.y) > 0.1;
+      });
+      
+      const strikerMoving = strikerRef.current ? 
+        (Math.abs(strikerRef.current.velocity.x) > 0.1 || Math.abs(strikerRef.current.velocity.y) > 0.1) : false;
+
+      if (anyMoving || strikerMoving || !isRenderingRef.current) {
+        animationRef.current = requestAnimationFrame(render);
+      } else {
+        isRenderingRef.current = false;
+      }
     };
 
-    render();
+    const startRendering = () => {
+      if (!isRenderingRef.current) {
+        isRenderingRef.current = true;
+        render();
+      }
+    };
 
-    const runner = Matter.Runner.create();
+    startRendering();
+
+    const runner = Matter.Runner.create({
+      delta: 1000 / 60,
+    });
+    runnerRef.current = runner;
     Matter.Runner.run(runner, engine);
 
     const checkPockets = () => {
@@ -250,16 +275,22 @@ const CarromGame = () => {
       if (!anyMoving && strikerRef.current === null && isMoving) {
         setIsMoving(false);
       }
+      
+      // Restart rendering if pieces are moving
+      if (anyMoving || strikerRef.current) {
+        startRendering();
+      }
     };
 
-    const interval = setInterval(checkPockets, 100);
+    const interval = setInterval(checkPockets, 200);
 
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
+      if (runnerRef.current) Matter.Runner.stop(runnerRef.current);
       Matter.Engine.clear(engine);
       clearInterval(interval);
     };
-  }, [angle, strikerX, power, isPlayerTurn, avvaThinking, isMoving]);
+  }, []);
 
   useEffect(() => {
     if (playerScore >= 5 && !gameOver) {
@@ -286,6 +317,7 @@ const CarromGame = () => {
     if (!isPlayerTurn || !engineRef.current || gameOver || isMoving) return;
 
     const engine = engineRef.current;
+    isRenderingRef.current = true;
     const strikerY = 550;
 
     const striker = Matter.Bodies.circle(strikerX, strikerY, 20, {
@@ -341,6 +373,7 @@ const CarromGame = () => {
       }
 
       const engine = engineRef.current;
+      isRenderingRef.current = true;
       const width = 600;
       const strikerY = 100;
       const strikerX = width / 2 + (Math.random() - 0.5) * 100;
