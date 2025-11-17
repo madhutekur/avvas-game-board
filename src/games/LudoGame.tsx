@@ -337,29 +337,60 @@ const LudoGame = () => {
     for (let row = 0; row < size; row++) {
       for (let col = 0; col < size; col++) {
         const key = `${row}-${col}`;
-        let className = "w-8 h-8 border border-[#704214]/20";
+        let className = "aspect-square border border-border/20";
         
-        if (row < 6 && col < 6) className += " bg-[#C93C20]/10";
-        if (row < 6 && col > 8) className += " bg-[#3E8E4E]/10";
-        if (row > 8 && col < 6) className += " bg-[#F2C94C]/10";
-        if (row > 8 && col > 8) className += " bg-[#3A7BD5]/10";
+        // Home areas (corners)
+        if (row < 6 && col < 6) className += " bg-[#C93C20]/20"; // Red home
+        else if (row < 6 && col > 8) className += " bg-[#3A7BD5]/20"; // Blue home
+        else if (row > 8 && col < 6) className += " bg-[#F2C94C]/20"; // Yellow home
+        else if (row > 8 && col > 8) className += " bg-[#3E8E4E]/20"; // Green home
         
-        if (row >= 6 && row <= 8 && col >= 6 && col <= 8) {
-          className += " bg-[#D4AF37]/30";
+        // Center star
+        else if (row >= 6 && row <= 8 && col >= 6 && col <= 8) {
+          className += " bg-[#D4AF37]/40 border-[#D4AF37]";
         }
         
-        const isPathSquare = (
-          (row === 8 && col >= 0 && col <= 14) ||
-          (row === 6 && col >= 0 && col <= 14) ||
-          (row === 0 && col >= 0 && col <= 14) ||
-          (row === 14 && col >= 0 && col <= 14) ||
-          (col === 0 && row >= 0 && row <= 14) ||
-          (col === 14 && row >= 0 && row <= 14) ||
-          (row === 7 && (col >= 0 && col <= 6 || col >= 8 && col <= 14))
-        );
+        // Main path (cross shape)
+        else if (
+          // Left vertical arm
+          (col === 6 && row >= 0 && row <= 14 && row !== 7) ||
+          // Right vertical arm  
+          (col === 8 && row >= 0 && row <= 14 && row !== 7) ||
+          // Top horizontal arm
+          (row === 6 && col >= 0 && col <= 14 && col !== 7) ||
+          // Bottom horizontal arm
+          (row === 8 && col >= 0 && col <= 14 && col !== 7)
+        ) {
+          className += " bg-card/80 border-2 border-border";
+          
+          // Safe squares
+          const isSafeSquare = 
+            (row === 6 && col === 2) ||  // Safe 1
+            (row === 2 && col === 8) ||  // Safe 2
+            (row === 6 && col === 12) || // Safe 3
+            (row === 12 && col === 8);   // Safe 4
+            
+          if (isSafeSquare) {
+            className += " bg-accent/30 border-accent";
+          }
+        }
         
-        if (isPathSquare) {
-          className += " bg-[#F8E9D0] border-2 border-[#704214]/40";
+        // Finish lanes (colored paths to center)
+        else if (row === 7 && col >= 1 && col <= 5) {
+          className += " bg-[#C93C20]/40 border-[#C93C20]/60"; // Red finish lane
+        }
+        else if (row === 7 && col >= 9 && col <= 13) {
+          className += " bg-[#3A7BD5]/40 border-[#3A7BD5]/60"; // Blue finish lane
+        }
+        else if (col === 7 && row >= 1 && row <= 5) {
+          className += " bg-[#F2C94C]/40 border-[#F2C94C]/60"; // Yellow finish lane
+        }
+        else if (col === 7 && row >= 9 && row <= 13) {
+          className += " bg-[#3E8E4E]/40 border-[#3E8E4E]/60"; // Green finish lane
+        }
+        
+        else {
+          className += " bg-background/50";
         }
         
         squares.push(<div key={key} className={className}></div>);
@@ -407,7 +438,7 @@ const LudoGame = () => {
 
           <Card className="p-4">
             <div className="relative aspect-square max-w-[600px] mx-auto bg-[#F8E9D0] border-4 border-[#704214] rounded-lg overflow-hidden">
-              <div className="grid grid-cols-15 grid-rows-15 w-full h-full">
+              <div className="grid grid-cols-[repeat(15,minmax(0,1fr))] grid-rows-[repeat(15,minmax(0,1fr))] w-full h-full">
                 {renderLudoBoard()}
               </div>
 
