@@ -68,21 +68,26 @@ const ChineseCheckersGame = () => {
     const toPeg = currentBoard[toRow]?.[toCol];
     if (!toPeg || toPeg.player !== null) return false;
 
-    const rowDiff = Math.abs(toRow - fromRow);
-    const colDiff = Math.abs(toCol - fromCol);
+    const rowDiff = toRow - fromRow;
+    const colDiff = toCol - fromCol;
+    const absRowDiff = Math.abs(rowDiff);
+    const absColDiff = Math.abs(colDiff);
 
-    if ((rowDiff === 0 && colDiff === 1) || 
-        (rowDiff === 1 && colDiff === 0) ||
-        (rowDiff === 1 && colDiff === 1)) {
+    // Adjacent move in 6 directions (horizontal, vertical, and both diagonals)
+    if ((absRowDiff === 0 && absColDiff === 1) || 
+        (absRowDiff === 1 && absColDiff === 0) ||
+        (absRowDiff === 1 && absColDiff === 1)) {
       return true;
     }
 
-    if ((rowDiff === 0 && colDiff === 2) ||
-        (rowDiff === 2 && colDiff === 0) ||
-        (rowDiff === 2 && colDiff === 2)) {
-      const midRow = (fromRow + toRow) / 2;
-      const midCol = (fromCol + toCol) / 2;
+    // Jump move: must be exactly 2 spaces away in one of 6 directions
+    if ((absRowDiff === 0 && absColDiff === 2) ||
+        (absRowDiff === 2 && absColDiff === 0) ||
+        (absRowDiff === 2 && absColDiff === 2)) {
+      const midRow = fromRow + rowDiff / 2;
+      const midCol = fromCol + colDiff / 2;
       const midPeg = currentBoard[midRow]?.[midCol];
+      // Must have a peg in the middle to jump over
       return midPeg?.player !== null;
     }
 
@@ -155,27 +160,42 @@ const ChineseCheckersGame = () => {
         });
       });
 
+      // All 6 directions plus their jump equivalents (12 total directions)
       const directions: [number, number][] = [
-        [1, 0], [2, 0], [1, 1], [2, 2],
-        [0, 1], [0, 2], [1, -1], [0, -1],
-        [-1, 0], [-2, 0], [-1, -1], [-2, -2],
-        [0, -1], [0, -2], [-1, 1], [2, -2],
+        [1, 0], [2, 0],     // down
+        [0, 1], [0, 2],     // right
+        [1, 1], [2, 2],     // down-right
+        [-1, 0], [-2, 0],   // up
+        [0, -1], [0, -2],   // left
+        [-1, -1], [-2, -2], // up-left
+        [1, -1], [2, -2],   // down-left
+        [-1, 1], [-2, 2],   // up-right
       ];
 
+      // Prioritize moves that go downward (toward player's goal)
+      const movesWithScore: Array<{ row: number; col: number; newRow: number; newCol: number; score: number }> = [];
+
       for (const [row, col] of avvaPegs) {
-        const sortedDirs = [...directions].sort((a, b) => b[0] - a[0]);
-        
-        for (const [dRow, dCol] of sortedDirs) {
+        for (const [dRow, dCol] of directions) {
           const newRow = row + dRow;
           const newCol = col + dCol;
           
           if (newRow >= 0 && newRow < 13 && newCol >= 0 && newCol < 13) {
             if (isValidMove(row, col, newRow, newCol, currentBoard)) {
-              commitMove(row, col, newRow, newCol, "avva");
-              return;
+              // Score based on progress toward goal (bottom rows)
+              const score = newRow - row + (Math.abs(dRow) === 2 ? 2 : 0); // Prefer jumps and downward moves
+              movesWithScore.push({ row, col, newRow, newCol, score });
             }
           }
         }
+      }
+
+      if (movesWithScore.length > 0) {
+        // Sort by score (higher is better)
+        movesWithScore.sort((a, b) => b.score - a.score);
+        const bestMove = movesWithScore[0];
+        commitMove(bestMove.row, bestMove.col, bestMove.newRow, bestMove.newCol, "avva");
+        return;
       }
 
       setAvvaThinking(false);
