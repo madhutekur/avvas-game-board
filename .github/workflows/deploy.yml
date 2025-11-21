@@ -30,9 +30,22 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Show build files (for debugging)
+        run: |
+          echo "Dist root:"
+          ls -la dist || true
+          echo "Dist assets:"
+          ls -la dist/assets || true
+          echo "Head of index.html:"
+          sed -n '1,40p' dist/index.html || true
+
+      - name: Copy index.html -> 404.html (SPA fallback)
+        run: cp dist/index.html dist/404.html
+
       - name: Deploy
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist
           publish_branch: gh-pages
+          commit_message: "chore: publish site from GitHub Actions"
