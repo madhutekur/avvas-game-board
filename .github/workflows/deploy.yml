@@ -2,11 +2,22 @@ name: Build and Deploy to GitHub Pages
 on:
   push:
     branches: [ main ]
+
+# Allow the workflow to write pages and push commits
+permissions:
+  contents: write    # allow pushing commits (gh-pages)
+  pages: write       # allow publishing GitHub Pages
+  id-token: write
+
 jobs:
   build-deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true   # ensure GITHUB_TOKEN is available for git push
 
       - name: Use Node.js
         uses: actions/setup-node@v4
@@ -24,3 +35,4 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist
+          publish_branch: gh-pages
