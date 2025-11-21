@@ -94,10 +94,11 @@ const ChineseCheckersGame = () => {
     return false;
   };
 
-  const commitMove = (fromRow: number, fromCol: number, toRow: number, toCol: number, player: "player" | "avva") => {
+  const commitMove = (fromRow: number, fromCol: number, toRow: number, toCol: number, player: "player" | "avva", currentBoard: Peg[][]) => {
     setIsTurnLocked(true);
     
-    const newBoard = board.map(row => row.map(cell => cell ? { ...cell } : cell));
+    // Create a deep copy of the passed board (not the component state board)
+    const newBoard = currentBoard.map(row => row.map(cell => cell ? { ...cell } : cell));
     const movingPlayer = newBoard[fromRow][fromCol].player;
     
     newBoard[toRow][toCol] = { ...newBoard[toRow][toCol], player: movingPlayer };
@@ -194,7 +195,7 @@ const ChineseCheckersGame = () => {
         // Sort by score (higher is better)
         movesWithScore.sort((a, b) => b.score - a.score);
         const bestMove = movesWithScore[0];
-        commitMove(bestMove.row, bestMove.col, bestMove.newRow, bestMove.newCol, "avva");
+        commitMove(bestMove.row, bestMove.col, bestMove.newRow, bestMove.newCol, "avva", currentBoard);
         return;
       }
 
@@ -215,7 +216,7 @@ const ChineseCheckersGame = () => {
       const [fromRow, fromCol] = selectedPeg;
       
       if (isValidMove(fromRow, fromCol, row, col, board)) {
-        commitMove(fromRow, fromCol, row, col, "player");
+        commitMove(fromRow, fromCol, row, col, "player", board);
       } else {
         if (cell.player === "player") {
           setSelectedPeg([row, col]);
