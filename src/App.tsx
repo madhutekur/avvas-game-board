@@ -16,7 +16,8 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <BrowserRouter>
+      {/* Set basename so the router works correctly when the app is served from /avvas-game-board/ */}
+      <BrowserRouter basename="/avvas-game-board">
         <Routes>
           <Route path="/" element={<Index />} />
           <Route path="/chess" element={<ChessGame />} />
