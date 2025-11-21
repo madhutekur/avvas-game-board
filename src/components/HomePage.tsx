@@ -7,34 +7,18 @@ import { Button } from "@/components/ui/button";
 
 // Game icons - we'll use Lucide icons that match each game
 import { 
-  Circle, // Carrom
   Crown, // Chess  
-  Dices, // Ludo
   Star, // Chinese Checkers
   CircleDot // Brainvita
 } from "lucide-react";
 
 const games = [
   {
-    id: "carrom",
-    title: "Carrom",
-    icon: Circle,
-    description: "Strike and pocket the coins",
-    route: "/carrom"
-  },
-  {
     id: "chess",
     title: "Chess",
     icon: Crown,
     description: "Checkmate Avva's king",
     route: "/chess"
-  },
-  {
-    id: "ludo",
-    title: "Ludo",
-    icon: Dices,
-    description: "Race your tokens home",
-    route: "/ludo"
   },
   {
     id: "chinese-checkers",

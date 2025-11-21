@@ -60,6 +60,92 @@ const ChessGame = () => {
     }
   }, [game]);
 
+  const evaluateBoard = (chess: Chess): number => {
+    const board = chess.board();
+    let score = 0;
+    
+    const pieceValues: Record<string, number> = {
+      p: 100, n: 320, b: 330, r: 500, q: 900, k: 20000
+    };
+
+    const pawnPositionBonus = [
+      [0,  0,  0,  0,  0,  0,  0,  0],
+      [50, 50, 50, 50, 50, 50, 50, 50],
+      [10, 10, 20, 30, 30, 20, 10, 10],
+      [5,  5, 10, 25, 25, 10,  5,  5],
+      [0,  0,  0, 20, 20,  0,  0,  0],
+      [5, -5,-10,  0,  0,-10, -5,  5],
+      [5, 10, 10,-20,-20, 10, 10,  5],
+      [0,  0,  0,  0,  0,  0,  0,  0]
+    ];
+
+    const knightPositionBonus = [
+      [-50,-40,-30,-30,-30,-30,-40,-50],
+      [-40,-20,  0,  0,  0,  0,-20,-40],
+      [-30,  0, 10, 15, 15, 10,  0,-30],
+      [-30,  5, 15, 20, 20, 15,  5,-30],
+      [-30,  0, 15, 20, 20, 15,  0,-30],
+      [-30,  5, 10, 15, 15, 10,  5,-30],
+      [-40,-20,  0,  5,  5,  0,-20,-40],
+      [-50,-40,-30,-30,-30,-30,-40,-50]
+    ];
+
+    for (let i = 0; i < 8; i++) {
+      for (let j = 0; j < 8; j++) {
+        const piece = board[i][j];
+        if (piece) {
+          const value = pieceValues[piece.type] || 0;
+          const positionBonus = piece.type === 'p' ? pawnPositionBonus[i][j] :
+                               piece.type === 'n' ? knightPositionBonus[i][j] : 0;
+          
+          if (piece.color === 'b') {
+            score += value + positionBonus;
+          } else {
+            score -= value + positionBonus;
+          }
+        }
+      }
+    }
+
+    // Bonus for mobility
+    const blackMoves = chess.moves().length;
+    score += blackMoves * 10;
+
+    return score;
+  };
+
+  const minimax = (chess: Chess, depth: number, alpha: number, beta: number, maximizing: boolean): number => {
+    if (depth === 0 || chess.isGameOver()) {
+      return evaluateBoard(chess);
+    }
+
+    const moves = chess.moves();
+    
+    if (maximizing) {
+      let maxEval = -Infinity;
+      for (const move of moves) {
+        const tempChess = new Chess(chess.fen());
+        tempChess.move(move);
+        const evaluation = minimax(tempChess, depth - 1, alpha, beta, false);
+        maxEval = Math.max(maxEval, evaluation);
+        alpha = Math.max(alpha, evaluation);
+        if (beta <= alpha) break;
+      }
+      return maxEval;
+    } else {
+      let minEval = Infinity;
+      for (const move of moves) {
+        const tempChess = new Chess(chess.fen());
+        tempChess.move(move);
+        const evaluation = minimax(tempChess, depth - 1, alpha, beta, true);
+        minEval = Math.min(minEval, evaluation);
+        beta = Math.min(beta, evaluation);
+        if (beta <= alpha) break;
+      }
+      return minEval;
+    }
+  };
+
   const makeAvvaMove = () => {
     setAvvaThinking(true);
     setAvvaMessage(getRandomMessage("thinking"));
@@ -69,23 +155,29 @@ const ChessGame = () => {
       
       if (possibleMoves.length === 0) return;
 
-      // Simple AI: random move with slight preference for captures
-      const captureMoves = possibleMoves.filter(move => move.includes('x'));
-      const movesToConsider = captureMoves.length > 0 && Math.random() > 0.3 
-        ? captureMoves 
-        : possibleMoves;
+      // Advanced AI with minimax algorithm
+      let bestMove = possibleMoves[0];
+      let bestValue = -Infinity;
       
-      const randomIndex = Math.floor(Math.random() * movesToConsider.length);
-      const move = movesToConsider[randomIndex];
+      for (const move of possibleMoves) {
+        const tempChess = new Chess(game.fen());
+        tempChess.move(move);
+        const value = minimax(tempChess, 3, -Infinity, Infinity, false);
+        
+        if (value > bestValue) {
+          bestValue = value;
+          bestMove = move;
+        }
+      }
       
-      game.move(move);
+      game.move(bestMove);
       setGame(new Chess(game.fen()));
       setAvvaThinking(false);
       
       if (Math.random() > 0.7) {
         setAvvaMessage(getRandomMessage("goodMove"));
       }
-    }, 1000 + Math.random() * 1000);
+    }, 1500 + Math.random() * 1000);
   };
 
   const onSquareClick = (square: string) => {
